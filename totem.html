@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Itaipu Parking — Totem</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 min-h-screen flex items-center justify-center p-6">
+  <div class="bg-white rounded-2xl shadow-lg w-full max-w-2xl p-6">
+    <h1 class="text-2xl font-semibold mb-4">
+      Simulador — Itaipu Parquetec
+    </h1>
+
+    <form id="form" class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700">Tipo de veículo</label>
+        <select id="vehicleType" class="mt-1 block w-full rounded-md border-gray-300">
+          <option value="CAR">Carro</option>
+          <option value="MOTORCYCLE">Moto</option>
+          <option value="ELECTRIC">Elétrico</option>
+          <option value="PCD">PCD</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700">Prédio destino</label>
+        <select id="destination" class="mt-1 block w-full rounded-md border-gray-300">
+          <option value="A">Prédio A (próx. Estac. 1)</option>
+          <option value="B">Prédio B (próx. Estac. 2)</option>
+          <option value="C">Prédio C (distante)</option>
+        </select>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button id="btnSuggest" type="button" class="px-4 py-2 bg-indigo-600 text-white rounded-md">Buscar vaga ideal</button>
+        <button id="btnClear" type="button" class="px-4 py-2 border rounded-md">Limpar</button>
+        <button id="btnReset" type="button" class="px-4 py-2 bg-yellow-500 text-white rounded-md">Resetar todas</button>
+        <button id="btnSimulate" type="button" class="px-4 py-2 bg-red-500 text-white rounded-md">Simular chegadas</button>
+      </div>
+    </form>
+
+    <div id="result" class="mt-6 hidden">
+      <div class="p-4 bg-slate-100 rounded-md">
+        <h2 class="text-lg font-semibold" id="spotCode">Vaga: —</h2>
+        <p class="text-sm" id="spotLot">Estacionamento: —</p>
+        <div class="mt-3 grid grid-cols-3 gap-3 text-center">
+          <div>
+            <div class="text-xs text-slate-500">Dirigir</div>
+            <div id="timeDrive" class="text-lg font-medium">-</div>
+            <div class="text-xs">seg</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500">Estacionar</div>
+            <div id="timePark" class="text-lg font-medium">-</div>
+            <div class="text-xs">seg</div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500">Caminhar</div>
+            <div id="timeWalk" class="text-lg font-medium">-</div>
+            <div class="text-xs">seg</div>
+          </div>
+        </div>
+
+        <div class="mt-4 flex gap-3">
+          <button id="btnOccupy" class="px-4 py-2 bg-green-600 text-white rounded-md">Ocupar vaga</button>
+          <button id="btnRelease" class="px-4 py-2 bg-red-600 text-white rounded-md">Liberar vaga</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="msg" class="mt-4 text-sm text-amber-600"></div>
+  </div>
+
+  <script>
+    const apiBase = "http://localhost:8080/api";
+    function qs(id) { return document.getElementById(id); }
+
+    // Buscar sugestão
+    qs("btnSuggest").addEventListener("click", async () => {
+      qs("msg").textContent = "";
+      const vehicleType = qs("vehicleType").value;
+      const destination = qs("destination").value;
+
+      const res = await fetch(`${apiBase}/suggest`, {
+        method: "POST",
+        headers: {"Content-Type":"application/json", "Accept":"application/json"},
+        body: JSON.stringify({vehicleType,destination})
+      });
+
+      if (res.status === 204) {
+        qs("msg").textContent = "Nenhuma vaga compatível disponível.";
+        qs("result").classList.add("hidden");
+        return;
+      }
+      if (!res.ok) { qs("msg").textContent = "Erro ao buscar sugestão."; return; }
+
+      const data = await res.json();
+      qs("result").classList.remove("hidden");
+      qs("spotCode").textContent = `Vaga: ${data.code}`;
+      qs("spotLot").textContent = `Estacionamento: ${data.parkingLot}`;
+      qs("timeDrive").textContent = Math.round(data.timeToDrive);
+      qs("timePark").textContent = data.timeToPark;
+      qs("timeWalk").textContent = Math.round(data.timeToWalk);
+      qs("btnOccupy").dataset.spotId = data.spotId;
+      qs("btnRelease").dataset.spotId = data.spotId;
+    });
+
+    // Ocupar vaga
+    qs("btnOccupy").addEventListener("click", async () => {
+      const id = qs("btnOccupy").dataset.spotId;
+      if (!id) return;
+      const res = await fetch(`${apiBase}/spots/${id}/occupy`, {
+        method:"PATCH",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" }
+      });
+      qs("msg").textContent = res.ok ? "Vaga ocupada com sucesso." : "Não foi possível ocupar a vaga.";
+    });
+
+    // Liberar vaga
+    qs("btnRelease").addEventListener("click", async () => {
+      const id = qs("btnRelease").dataset.spotId;
+      if (!id) return;
+      const res = await fetch(`${apiBase}/spots/${id}/release`, {
+        method:"PATCH",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" }
+      });
+      qs("msg").textContent = res.ok ? "Vaga liberada com sucesso." : "Não foi possível liberar a vaga.";
+    });
+
+    // Limpar resultado
+    qs("btnClear").addEventListener("click", () => {
+      qs("result").classList.add("hidden");
+      qs("msg").textContent = "";
+    });
+
+    // Resetar todas vagas
+    qs("btnReset").addEventListener("click", async () => {
+      const res = await fetch(`${apiBase}/spots/reset`, {method:"PATCH", headers: { "Accept": "application/json" }});
+      if (res.ok) {
+        qs("msg").textContent = "Todas as vagas foram resetadas para disponíveis.";
+        qs("result").classList.add("hidden");
+      } else {
+        qs("msg").textContent = "Erro ao resetar vagas.";
+      }
+    });
+
+    // --- SSE: atualizar Totem automaticamente ---
+    const evtSource = new EventSource("http://localhost:8080/events/stream");
+
+    evtSource.addEventListener("spot-changed", async (event) => {
+      try {
+        const vehicleType = qs("vehicleType").value;
+        const destination = qs("destination").value;
+        if (!vehicleType || !destination) return;
+
+        const res = await fetch(`${apiBase}/suggest`, {
+          method: "POST",
+          headers: {"Content-Type":"application/json", "Accept":"application/json"},
+          body: JSON.stringify({vehicleType,destination})
+        });
+
+        if (!res.ok || res.status === 204) {
+          qs("msg").textContent = "Nenhuma vaga compatível disponível.";
+          qs("result").classList.add("hidden");
+          return;
+        }
+
+        const data = await res.json();
+        qs("result").classList.remove("hidden");
+        qs("spotCode").textContent = `Vaga: ${data.code}`;
+        qs("spotLot").textContent = `Estacionamento: ${data.parkingLot}`;
+        qs("timeDrive").textContent = Math.round(data.timeToDrive);
+        qs("timePark").textContent = data.timeToPark;
+        qs("timeWalk").textContent = Math.round(data.timeToWalk);
+        qs("btnOccupy").dataset.spotId = data.spotId;
+        qs("btnRelease").dataset.spotId = data.spotId;
+      } catch(e) {
+        console.error("Erro ao atualizar sugestão via SSE:", e);
+      }
+    });
+  </script>
+</body>
+</html>
